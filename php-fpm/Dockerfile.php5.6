@@ -1,0 +1,61 @@
+# PHP 5.6 from Software Collection Library for Oracle Linux
+# https://docs.oracle.com/en/operating-systems/oracle-linux/scl-user/index.html
+FROM oraclelinux:7-slim
+RUN set -ex \
+    && yum -y update --security \
+    && yum --setopt=skip_missing_names_on_install=false -y install \
+        ca-certificates curl oracle-softwarecollection-release-el7 \
+        oracle-epel-release-el7 \
+    && yum clean all \
+    && rm -rf /var/cache/yum
+RUN set -ex \
+    && yum --setopt=skip_missing_names_on_install=false -y install \
+        rh-php56 rh-php56-php-fpm rh-php56-php-soap \
+        rh-php56-php-mysqlnd rh-php56-php-gd rh-php56-php-curl \
+        rh-php56-php-mbstring \
+    && yum clean all \
+    && rm -rf /var/cache/yum
+RUN set -ex \
+    && yum --setopt=skip_missing_names_on_install=false -y install \
+        fcgi msmtp \
+    && yum clean all \
+    && rm -rf /var/cache/yum \
+    && source /opt/rh/rh-php56/enable \
+    && php-fpm -v
+
+RUN set -ex \
+    && sed 's/127.0.0.1:9000/9000/' -i /etc/opt/rh/rh-php56/php-fpm.d/www.conf \
+    && sed '/allowed_clients/d' -i /etc/opt/rh/rh-php56/php-fpm.d/www.conf \
+    && sed '/catch_workers_output/s/^;//' -i /etc/opt/rh/rh-php56/php-fpm.d/www.conf \
+    && sed 's|;clear_env.*|clear_env = no|' -i /etc/opt/rh/rh-php56/php-fpm.d/www.conf \
+    && sed 's|;pm.status_path.*|pm.status_path = /status|' -i /etc/opt/rh/rh-php56/php-fpm.d/www.conf \
+    && sed 's|;ping.path.*|ping.path = /ping|' -i /etc/opt/rh/rh-php56/php-fpm.d/www.conf \
+    && sed 's|;ping.response.*|ping.response = pong|' -i /etc/opt/rh/rh-php56/php-fpm.d/www.conf \
+    && test -d /var/opt/rh/rh-php56/run/php-fpm || mkdir /var/opt/rh/rh-php56/run/php-fpm \
+    && chgrp -R 0 \
+        /var/opt/rh/rh-php56/run/php-fpm \
+        /var/opt/rh/rh-php56/log/php-fpm \
+        /var/opt/rh/rh-php56/lib/php/wsdlcache \
+        /var/opt/rh/rh-php56/lib/php/session \
+    && chmod -R g=u \
+        /var/opt/rh/rh-php56/run/php-fpm \
+        /var/opt/rh/rh-php56/log/php-fpm \
+        /var/opt/rh/rh-php56/lib/php/wsdlcache \
+        /var/opt/rh/rh-php56/lib/php/session \
+    && ln -sf /proc/self/fd/2 /var/opt/rh/rh-php56/log/php-fpm/www-slow.log \
+    && ln -sf /proc/self/fd/2 /var/opt/rh/rh-php56/log/php-fpm/www-error.log \
+    && ln -sf /proc/self/fd/2 /var/opt/rh/rh-php56/log/php-fpm/error.log \
+    && echo "#!/bin/bash" > /run.sh \
+    && echo "source /opt/rh/rh-php56/enable" >> /run.sh \
+    && echo "php-fpm -v" >> /run.sh \
+    && echo "exec php-fpm -F -O" >> /run.sh \
+    && chmod +x /run.sh
+
+COPY custom_php.ini /etc/opt/rh/rh-php56/php.d/999-custom_php.ini
+COPY msmtprc /etc/msmtprc
+COPY --chmod=755 phpsessionclean.sh /phpsessionclean.sh
+
+USER 33:0
+ENTRYPOINT ["/run.sh"]
+STOPSIGNAL SIGQUIT
+EXPOSE 9000

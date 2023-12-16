@@ -1,0 +1,180 @@
+# docker-compose build --progress=plain
+# docker-compose up -d
+volumes:
+  mysql_data:
+
+services:
+  php:
+    image: php-fpm
+    container_name: php
+    build:
+      context: php-fpm
+      dockerfile: Dockerfile.php8.1
+    environment:
+      TZ: America/Sao_Paulo
+      DB_USER: test
+      DB_PASS: 'test@1'
+      DB_HOST: gateway.docker.internal
+      DB_NAME: testdb
+    network_mode: bridge
+    extra_hosts:
+      - "gateway.docker.internal:host-gateway"
+    ports:
+      - "9000:9000"
+    healthcheck:
+      test: 'SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET QUERY_STRING="json" cgi-fcgi -bind -connect 127.0.0.1:9000 | grep pong'
+      start_period: 5s
+      interval: 10s
+      timeout: 3s
+      retries: 2
+    # healthcheck:
+    #   test: '/phpsessionclean.sh || exit 0'
+    #   start_period: 30s
+    #   interval: 1800s
+    #   timeout: 10s
+    #   retries: 2
+    deploy:
+      resources:
+        limits:
+          cpus: '0.80'
+          memory: 256M
+        reservations:
+          memory: 256M
+    restart: always
+    volumes:
+      - $PWD/www:/var/www
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  apache:
+    image: apache
+    container_name: apache
+    build:
+      context: apache
+      dockerfile: Dockerfile
+    stop_signal: SIGWINCH
+    volumes:
+      - $PWD/www:/var/www
+      - $PWD/apache/sites-enabled:/etc/apache2/sites-enabled
+    environment:
+      TZ: America/Sao_Paulo
+    ports:
+      - 8080:8080
+    deploy:
+      resources:
+        limits:
+          cpus: '0.80'
+          memory: 256M
+        reservations:
+          memory: 256M
+    restart: always
+    network_mode: bridge
+    extra_hosts:
+      - "gateway.docker.internal:host-gateway"
+    healthcheck:
+      test: 'curl -fsSL -H "User-Agent: HealthCheck" http://localhost:8080/ping'
+      start_period: 5s
+      interval: 10s
+      timeout: 3s
+      retries: 2
+    depends_on:
+      php:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8
+    container_name: mysql
+    environment:
+      TZ: America/Sao_Paulo
+      MYSQL_ROOT_PASSWORD: 'root@1'
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: test
+      MYSQL_PASSWORD: 'test@1'
+    healthcheck:
+      test: "mysql --connect-timeout=2 -u root -p$$MYSQL_ROOT_PASSWORD -e 'select 1'"
+      start_period: 15s
+      interval: 10s
+      timeout: 3s
+      retries: 2
+    deploy:
+      resources:
+        limits:
+          cpus: '0.80'
+          memory: 1024M
+        reservations:
+          memory: 1024M
+    restart: always
+    network_mode: bridge
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    # docker-compose exec -it redis redis-cli keys \*
+    # docker-compose exec -it redis redis-cli ttl "PHPREDIS_SESSION:tldhl618hd50obcfgnofppp6r4"
+    image: redis:7-alpine
+    container_name: redis
+    environment:
+      TZ: America/Sao_Paulo
+    command:
+      - redis-server
+      - --save 60 1
+      - --loglevel notice
+    restart: always
+    network_mode: bridge
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.80'
+          memory: 256M
+        reservations:
+          memory: 256M
+    healthcheck:
+      interval: 5s
+      test: redis-cli ping
+
+  postfix:
+    image: postfix
+    container_name: postfix
+    build:
+      context: postfix
+      dockerfile: Dockerfile
+    network_mode: bridge
+    ports:
+      - "25:25"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.80'
+          memory: 256M
+        reservations:
+          memory: 256M
+    restart: always
+    environment: 
+      TZ: America/Sao_Paulo
+    healthcheck:
+      test: "postfix status"
+      start_period: 5s
+      interval: 10s
+      timeout: 3s
+      retries: 2
+    ### Relay restricted by Sender(From:) ###
+    # entrypoint:
+    #   - sh
+    #   - -c
+    #   - |
+    #     postconf -e "default_transport = discard:to /dev/null"
+    #     postconf -e "sender_dependent_default_transport_maps = hash:/etc/postfix/sender_dependent_transport"
+    #     postconf -e "always_add_missing_headers = yes"
+    #     echo 'noreply@wiltoncarvalho.com smtp:[192.168.122.210]:25' > /etc/postfix/sender_dependent_transport
+    #     echo 'noreply@example.com smtp:[192.168.122.210]:25' >> /etc/postfix/sender_dependent_transport
+    #     echo '* discard:to /dev/null' >> /etc/postfix/sender_dependent_transport
+    #     postmap /etc/postfix/sender_dependent_transport
+    #     exec postfix start-fg
