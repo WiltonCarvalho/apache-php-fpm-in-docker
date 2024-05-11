@@ -21,7 +21,7 @@ RUN set -ex \
     && sed -i 's|;ping.path.*|ping.path = /ping|' /etc/php/8.2/fpm/pool.d/www.conf \
     && sed -i 's|;ping.response.*|ping.response = pong|' /etc/php/8.2/fpm/pool.d/www.conf \
     && sed -i 's|;log_limit.*|log_limit = 8192|' /etc/php/8.2/fpm/php-fpm.conf \
-    && test -d /run/php || mkdir /run/php \
+    && mkdir -p /run/php \
     && chgrp -R 0 /run/php /var/lib/php/sessions \
     && chmod -R g=u /run/php /var/lib/php/sessions \
     && ln -sf /usr/sbin/php-fpm8.2 /usr/sbin/php-fpm \

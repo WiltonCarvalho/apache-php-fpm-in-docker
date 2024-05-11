@@ -31,7 +31,7 @@ RUN set -ex \
     && sed 's|;pm.status_path.*|pm.status_path = /status|' -i /etc/opt/rh/rh-php56/php-fpm.d/www.conf \
     && sed 's|;ping.path.*|ping.path = /ping|' -i /etc/opt/rh/rh-php56/php-fpm.d/www.conf \
     && sed 's|;ping.response.*|ping.response = pong|' -i /etc/opt/rh/rh-php56/php-fpm.d/www.conf \
-    && test -d /var/opt/rh/rh-php56/run/php-fpm || mkdir /var/opt/rh/rh-php56/run/php-fpm \
+    && mkdir -p /var/opt/rh/rh-php56/run/php-fpm \
     && chgrp -R 0 \
         /var/opt/rh/rh-php56/run/php-fpm \
         /var/opt/rh/rh-php56/log/php-fpm \
